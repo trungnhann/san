@@ -1,0 +1,30 @@
+# Binaries
+app
+main
+tmp/
+
+# Git
+.git/
+.gitignore
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Environment
+.env
+*.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Go
+vendor/
+go.work
+go.work.sum
+
+# OS
+.DS_Store

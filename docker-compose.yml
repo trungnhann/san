@@ -1,0 +1,108 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: san-app
+    ports:
+      - "3001"
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - HOST=0.0.0.0
+      - DB_HOSTNAME=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=${DB_USERNAME:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_DBNAME=${DB_DBNAME:-san}
+      - MIGRATION_PATH=internal/db/migration
+      - STORAGE_ENDPOINT=minio:9000
+      - STORAGE_ACCESS_KEY=minioadmin
+      - STORAGE_SECRET_KEY=minioadmin
+      - STORAGE_BUCKET_NAME=san-bucket
+      - STORAGE_USE_SSL=false
+      - STORAGE_REGION=us-east-1
+    depends_on:
+      - postgres
+    networks:
+      - san-network
+
+  nginx:
+    image: nginx:alpine
+    container_name: san-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    networks:
+      - san-network
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: san-postgres
+    environment:
+      - POSTGRES_USER=${DB_USERNAME:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_DBNAME:-san}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5430:5432"
+    networks:
+      - san-network
+
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   container_name: san-prometheus
+  #   volumes:
+  #     - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   ports:
+  #     - "9090:9090"
+  #   networks:
+  #     - san-network
+
+  # grafana:
+  #   image: grafana/grafana:latest
+  #   container_name: san-grafana
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+  #     - ./monitoring/grafana/dashboards:/etc/grafana/dashboards
+  #   environment:
+  #     - GF_SECURITY_ADMIN_PASSWORD=admin
+  #   networks:
+  #     - san-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: san-minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - san-network
+
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c " /usr/bin/mc config host add myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin}; /usr/bin/mc mb myminio/${MINIO_BUCKET_NAME:-san-bucket}; /usr/bin/mc anonymous set public myminio/${MINIO_BUCKET_NAME:-san-bucket}; exit 0; "
+    networks:
+      - san-network
+
+networks:
+  san-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
