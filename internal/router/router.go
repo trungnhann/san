@@ -7,9 +7,9 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine, userHandler *handler.UserHandler) {
-	api := r.Group("/api")
+	v1 := r.Group("/api/v1")
 	{
-		users := api.Group("/users")
+		users := v1.Group("/users")
 		users.POST("", userHandler.CreateUser)
 		users.GET("", userHandler.ListUsers)
 		users.GET("/:id", userHandler.GetUserByID)
