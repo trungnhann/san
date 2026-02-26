@@ -100,10 +100,16 @@ const listUsers = `-- name: ListUsers :many
 SELECT id, username, email, password, bio, created_at, updated_at
 FROM users
 ORDER BY created_at DESC
+LIMIT $1 OFFSET $2
 `
 
-func (q *Queries) ListUsers(ctx context.Context) ([]*User, error) {
-	rows, err := q.db.Query(ctx, listUsers)
+type ListUsersParams struct {
+	Limit  int32 `json:"limit"`
+	Offset int32 `json:"offset"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]*User, error) {
+	rows, err := q.db.Query(ctx, listUsers, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
@@ -128,4 +134,42 @@ func (q *Queries) ListUsers(ctx context.Context) ([]*User, error) {
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateUser = `-- name: UpdateUser :one
+UPDATE users
+SET
+    username = COALESCE($1, username),
+    email = COALESCE($2, email),
+    bio = COALESCE($3, bio),
+    updated_at = NOW()
+WHERE id = $4
+RETURNING id, username, email, password, bio, created_at, updated_at
+`
+
+type UpdateUserParams struct {
+	Username *string `json:"username"`
+	Email    *string `json:"email"`
+	Bio      *string `json:"bio"`
+	ID       string  `json:"id"`
+}
+
+func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (*User, error) {
+	row := q.db.QueryRow(ctx, updateUser,
+		arg.Username,
+		arg.Email,
+		arg.Bio,
+		arg.ID,
+	)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Username,
+		&i.Email,
+		&i.Password,
+		&i.Bio,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return &i, err
 }

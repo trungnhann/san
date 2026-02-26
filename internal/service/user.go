@@ -2,15 +2,17 @@ package service
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 
 	dbsqlc "san/internal/db/sqlc"
 	storage_service "san/internal/service/storage"
+	"san/pkg/apperr"
 	"san/pkg/logger"
 	"san/pkg/utils"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v4"
 )
 
 type UserService struct {
@@ -55,7 +57,7 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*d
 	})
 	if err != nil {
 		s.log.Errorf("UserService.CreateUser: %v", err)
-		return nil, err
+		return nil, apperr.InternalServerError(err)
 	}
 
 	if input.AvatarFile != nil {
@@ -67,7 +69,7 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*d
 				s.log.Errorf("UserService.CreateUser: failed to rollback user creation: %v", delErr)
 			}
 
-			return nil, fmt.Errorf("failed to upload avatar: %w", err)
+			return nil, apperr.New(apperr.ErrCodeUploadFailed, "Failed to upload avatar", 500).WithCause(err)
 		}
 	}
 
@@ -77,24 +79,98 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*d
 func (s *UserService) GetUserByID(ctx context.Context, id string) (*dbsqlc.User, error) {
 	user, err := s.repo.GetUserByID(ctx, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.UserNotFound()
+		}
 		s.log.Errorf("UserService.GetUserByID: %v", err)
-		return nil, err
+		return nil, apperr.InternalServerError(err)
 	}
 	return user, nil
 }
 
-func (s *UserService) ListUsers(ctx context.Context) ([]*dbsqlc.User, error) {
-	users, err := s.repo.ListUsers(ctx)
+func (s *UserService) ListUsers(ctx context.Context, page, pageSize int32) ([]*dbsqlc.User, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	users, err := s.repo.ListUsers(ctx, dbsqlc.ListUsersParams{
+		Limit:  pageSize,
+		Offset: offset,
+	})
 	if err != nil {
 		s.log.Errorf("UserService.ListUsers: %v", err)
-		return nil, err
+		return nil, apperr.InternalServerError(err)
 	}
 	return users, nil
+}
+
+type UpdateUserInput struct {
+	ID       string
+	Username *string
+	Email    *string
+	Bio      *string
+}
+
+func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*dbsqlc.User, error) {
+	// Check if user exists
+	if _, err := s.repo.GetUserByID(ctx, input.ID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.UserNotFound()
+		}
+		s.log.Errorf("UserService.UpdateUser: check user exists: %v", err)
+		return nil, apperr.InternalServerError(err)
+	}
+
+	arg := dbsqlc.UpdateUserParams{
+		ID: input.ID,
+	}
+
+	if input.Username != nil {
+		arg.Username = input.Username
+	}
+	if input.Email != nil {
+		arg.Email = input.Email
+	}
+	if input.Bio != nil {
+		arg.Bio = input.Bio
+	}
+
+	user, err := s.repo.UpdateUser(ctx, arg)
+	if err != nil {
+		s.log.Errorf("UserService.UpdateUser: %v", err)
+		return nil, apperr.InternalServerError(err)
+	}
+	return user, nil
+}
+
+func (s *UserService) DeleteUser(ctx context.Context, id string) error {
+	if _, err := s.repo.GetUserByID(ctx, id); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.UserNotFound()
+		}
+		s.log.Errorf("UserService.DeleteUser: check user exists: %v", err)
+		return apperr.InternalServerError(err)
+	}
+
+	err := s.repo.DeleteUser(ctx, id)
+	if err != nil {
+		s.log.Errorf("UserService.DeleteUser: %v", err)
+		return apperr.InternalServerError(err)
+	}
+	return nil
 }
 
 func (s *UserService) GetAvatarURL(ctx context.Context, userID string) (string, error) {
 	url, err := s.activeStorage.GetAttachmentURL(ctx, "users", userID, "avatar")
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
+		// Log debug only, as avatar might not exist
 		s.log.Debugf("UserService.GetAvatarURL: avatar not found for user %s: %v", userID, err)
 		return "", nil
 	}
@@ -105,12 +181,15 @@ func (s *UserService) UploadUserAvatar(ctx context.Context, userID string, file 
 	_, err := s.activeStorage.AttachFile(ctx, "users", userID, "avatar", file, size, contentType, originalName, true)
 	if err != nil {
 		s.log.Errorf("UserService.UploadUserAvatar: failed to attach file: %v", err)
-		return nil, err
+		return nil, apperr.InternalServerError(err)
 	}
 
 	user, err := s.repo.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.UserNotFound()
+		}
+		return nil, apperr.InternalServerError(err)
 	}
 
 	return user, nil

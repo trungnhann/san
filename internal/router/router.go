@@ -12,6 +12,8 @@ func SetupRoutes(r *gin.Engine, userHandler *handler.UserHandler) {
 		users := v1.Group("/users")
 		users.POST("", userHandler.CreateUser)
 		users.GET("", userHandler.ListUsers)
+		users.PUT("/:id", userHandler.UpdateUser)
+		users.DELETE("/:id", userHandler.DeleteUser)
 		users.GET("/:id", userHandler.GetUserByID)
 		users.POST("/:id/avatar", userHandler.UploadAvatar)
 	}

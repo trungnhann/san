@@ -13,5 +13,6 @@ type UserRepository interface {
 	CreateUser(ctx context.Context, arg dbsqlc.CreateUserParams) (*dbsqlc.User, error)
 	DeleteUser(ctx context.Context, id string) error
 	GetUserByID(ctx context.Context, id string) (*dbsqlc.User, error)
-	ListUsers(ctx context.Context) ([]*dbsqlc.User, error)
+	ListUsers(ctx context.Context, arg dbsqlc.ListUsersParams) ([]*dbsqlc.User, error)
+	UpdateUser(ctx context.Context, arg dbsqlc.UpdateUserParams) (*dbsqlc.User, error)
 }

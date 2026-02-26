@@ -22,7 +22,8 @@ type Querier interface {
 	GetBlob(ctx context.Context, id uuid.UUID) (*StorageBlob, error)
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	GetUserByID(ctx context.Context, id string) (*User, error)
-	ListUsers(ctx context.Context) ([]*User, error)
+	ListUsers(ctx context.Context, arg ListUsersParams) ([]*User, error)
+	UpdateUser(ctx context.Context, arg UpdateUserParams) (*User, error)
 }
 
 var _ Querier = (*Queries)(nil)

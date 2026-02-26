@@ -16,8 +16,19 @@ WHERE email = $1;
 -- name: ListUsers :many
 SELECT *
 FROM users
-ORDER BY created_at DESC;
+ORDER BY created_at DESC
+LIMIT $1 OFFSET $2;
 
 -- name: DeleteUser :exec
 DELETE FROM users
 WHERE id = $1;
+
+-- name: UpdateUser :one
+UPDATE users
+SET
+    username = COALESCE(sqlc.narg('username'), username),
+    email = COALESCE(sqlc.narg('email'), email),
+    bio = COALESCE(sqlc.narg('bio'), bio),
+    updated_at = NOW()
+WHERE id = sqlc.arg('id')
+RETURNING *;

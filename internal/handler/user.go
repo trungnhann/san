@@ -3,10 +3,13 @@ package handler
 import (
 	"context"
 	"net/http"
+	"strconv"
 
 	"san/api/dto"
 	dbsqlc "san/internal/db/sqlc"
 	"san/internal/service"
+	"san/pkg/apperr"
+	"san/pkg/response"
 
 	"github.com/gin-gonic/gin"
 )
@@ -70,11 +73,11 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 
 	user, err := h.service.CreateUser(ctx, input)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to create user"})
+		response.Error(c, err)
 		return
 	}
 
-	c.JSON(http.StatusCreated, h.userToResponse(c.Request.Context(), user))
+	response.Success(c, http.StatusCreated, h.userToResponse(c.Request.Context(), user))
 }
 
 // GetUserByID godoc
@@ -84,8 +87,8 @@ func (h *UserHandler) CreateUser(c *gin.Context) {
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "User ID"
-// @Success      200  {object}  dto.UserResponse
-// @Failure      404  {object}  map[string]string
+// @Success      200  {object}  response.Envelope{data=dto.UserResponse}
+// @Failure      404  {object}  response.Envelope{error=response.ErrorData}
 // @Router       /users/{id} [get]
 func (h *UserHandler) GetUserByID(c *gin.Context) {
 	id := c.Param("id")
@@ -93,28 +96,33 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 
 	user, err := h.service.GetUserByID(ctx, id)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": "user not found"})
+		response.Error(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, h.userToResponse(ctx, user))
+	response.Success(c, http.StatusOK, h.userToResponse(ctx, user))
 }
 
 // ListUsers godoc
 // @Summary      List all users
-// @Description  Get a list of all users
+// @Description  Get a list of all users with pagination
 // @Tags         users
 // @Accept       json
 // @Produce      json
-// @Success      200  {array}   dto.UserResponse
-// @Failure      500  {object}  map[string]string
+// @Param        page      query     int     false  "Page number (default 1)"
+// @Param        page_size query     int     false  "Page size (default 10)"
+// @Success      200  {object}  response.Envelope{data=[]dto.UserResponse,meta=response.MetaData}
+// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
 // @Router       /users [get]
 func (h *UserHandler) ListUsers(c *gin.Context) {
 	ctx := c.Request.Context()
 
-	users, err := h.service.ListUsers(ctx)
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+
+	users, err := h.service.ListUsers(ctx, int32(page), int32(pageSize))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to list users"})
+		response.Error(c, err)
 		return
 	}
 
@@ -123,7 +131,81 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 		responses = append(responses, h.userToResponse(ctx, u))
 	}
 
-	c.JSON(http.StatusOK, responses)
+	meta := response.MetaData{
+		Page:     page,
+		PageSize: pageSize,
+		// TotalItems and TotalPages should be fetched from service if available
+	}
+
+	response.SuccessWithMeta(c, http.StatusOK, responses, meta)
+}
+
+// UpdateUser godoc
+// @Summary      Update a user
+// @Description  Update user details
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        id       path      string  true   "User ID"
+// @Param        username body      string  false  "Username"
+// @Param        email    body      string  false  "Email"
+// @Param        bio      body      string  false  "Bio"
+// @Success      200  {object}  response.Envelope{data=dto.UserResponse}
+// @Failure      400  {object}  response.Envelope{error=response.ErrorData}
+// @Failure      404  {object}  response.Envelope{error=response.ErrorData}
+// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
+// @Router       /users/{id} [put]
+func (h *UserHandler) UpdateUser(c *gin.Context) {
+	id := c.Param("id")
+	var req struct {
+		Username *string `json:"username"`
+		Email    *string `json:"email"`
+		Bio      *string `json:"bio"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.BadRequest(err.Error()))
+		return
+	}
+
+	ctx := c.Request.Context()
+	input := service.UpdateUserInput{
+		ID:       id,
+		Username: req.Username,
+		Email:    req.Email,
+		Bio:      req.Bio,
+	}
+
+	user, err := h.service.UpdateUser(ctx, input)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, h.userToResponse(ctx, user))
+}
+
+// DeleteUser godoc
+// @Summary      Delete a user
+// @Description  Delete a user by ID
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        id   path      string  true  "User ID"
+// @Success      200  {object}  response.Envelope
+// @Failure      404  {object}  response.Envelope{error=response.ErrorData}
+// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
+// @Router       /users/{id} [delete]
+func (h *UserHandler) DeleteUser(c *gin.Context) {
+	id := c.Param("id")
+	ctx := c.Request.Context()
+
+	if err := h.service.DeleteUser(ctx, id); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "user deleted successfully"})
 }
 
 // UploadAvatar godoc
@@ -134,14 +216,14 @@ func (h *UserHandler) ListUsers(c *gin.Context) {
 // @Produce      json
 // @Param        id      path      string  true  "User ID"
 // @Param        avatar  formData  file    true  "Avatar Image"
-// @Success      200  {object}  dto.UserResponse
-// @Failure      400  {object}  map[string]string
-// @Failure      500  {object}  map[string]string
+// @Success      200  {object}  response.Envelope{data=dto.UserResponse}
+// @Failure      400  {object}  response.Envelope{error=response.ErrorData}
+// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
 // @Router       /users/{id}/avatar [post]
 func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	userID := c.Param("id")
 	if userID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "user id is required"})
+		response.Error(c, apperr.BadRequest("user id is required"))
 		return
 	}
 
@@ -149,7 +231,7 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 
 	file, header, err := c.Request.FormFile("avatar")
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "failed to get file: " + err.Error()})
+		response.Error(c, apperr.BadRequest("failed to get file: "+err.Error()))
 		return
 	}
 	defer file.Close()
@@ -157,11 +239,11 @@ func (h *UserHandler) UploadAvatar(c *gin.Context) {
 	ctx := c.Request.Context()
 	user, err := h.service.UploadUserAvatar(ctx, userID, file, header.Size, header.Header.Get("Content-Type"), header.Filename)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to upload avatar"})
+		response.Error(c, err)
 		return
 	}
 
-	c.JSON(http.StatusOK, h.userToResponse(ctx, user))
+	response.Success(c, http.StatusOK, h.userToResponse(ctx, user))
 }
 
 func (h *UserHandler) userToResponse(ctx context.Context, u *dbsqlc.User) dto.UserResponse {
