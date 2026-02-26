@@ -23,6 +23,28 @@ By exploring this codebase, you will learn:
 - **Documentation**: [Swag](https://github.com/swaggo/swag)
 - **Hot Reload**: [Air](https://github.com/air-verse/air)
 
+## ✨ Key Features & Highlights
+
+### 🔐 Authentication & Security
+- **JWT Authentication**: robust access and refresh token implementation.
+- **Owner-Only Deletion**: Strict authorization policy ensuring users can only delete their own posts.
+- **Protected Routes**: Middleware-guarded endpoints for sensitive operations.
+
+### 📝 Post Management
+- **Full CRUD**: comprehensive operations for blog posts.
+- **Abstract Field**: A dedicated summary field separate from the main content. Perfect for:
+    - SEO meta descriptions
+    - Blog list previews (cards)
+    - Social media sharing snippets
+- **Rich Metadata**: Support for tags, publication status, and location data.
+
+### 📊 Observability
+- **Custom Logger Middleware**: Tracks and logs:
+    - HTTP Status Codes
+    - Response Time (Latency)
+    - Client IP Addresses
+    - HTTP Methods & Paths
+
 ## 📂 Project Structure
 
 ```
