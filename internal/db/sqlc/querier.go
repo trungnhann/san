@@ -13,16 +13,23 @@ import (
 type Querier interface {
 	CreateAttachment(ctx context.Context, arg CreateAttachmentParams) (*StorageAttachment, error)
 	CreateBlob(ctx context.Context, arg CreateBlobParams) (*StorageBlob, error)
+	CreatePost(ctx context.Context, arg CreatePostParams) (*Post, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (*User, error)
 	DeleteAttachment(ctx context.Context, id uuid.UUID) error
 	DeleteBlob(ctx context.Context, id uuid.UUID) error
+	DeletePost(ctx context.Context, id string) error
 	DeleteUser(ctx context.Context, id string) error
 	GetAttachment(ctx context.Context, arg GetAttachmentParams) (*GetAttachmentRow, error)
 	GetAttachmentByRecord(ctx context.Context, arg GetAttachmentByRecordParams) (*GetAttachmentByRecordRow, error)
 	GetBlob(ctx context.Context, id uuid.UUID) (*StorageBlob, error)
+	GetPostByID(ctx context.Context, id string) (*Post, error)
+	GetPostBySlug(ctx context.Context, slug string) (*Post, error)
 	GetUserByEmail(ctx context.Context, email string) (*User, error)
 	GetUserByID(ctx context.Context, id string) (*User, error)
+	ListPosts(ctx context.Context, arg ListPostsParams) ([]*Post, error)
+	ListPostsByUserID(ctx context.Context, arg ListPostsByUserIDParams) ([]*Post, error)
 	ListUsers(ctx context.Context, arg ListUsersParams) ([]*User, error)
+	UpdatePost(ctx context.Context, arg UpdatePostParams) (*Post, error)
 	UpdateUser(ctx context.Context, arg UpdateUserParams) (*User, error)
 }
 

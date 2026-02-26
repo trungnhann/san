@@ -16,6 +16,7 @@ import (
 	storage_service "san/internal/service/storage"
 	"san/internal/storage"
 	"san/pkg/logger"
+	"san/pkg/token"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -59,11 +60,15 @@ func main() {
 
 	activeStorageService := storage_service.NewActiveStorageService(database.Queries, fileStorage, log)
 
-	userService := service.NewUserService(database.Queries, activeStorageService, log)
+	tokenManager := token.NewJWTManager(config.JWTSecret, config.JWTExpirationHours, config.RefreshExpirationDays)
+
+	userService := service.NewUserService(database.Queries, activeStorageService, tokenManager, log)
+	postService := service.NewPostService(database.Queries, activeStorageService, log)
 
 	userHandler := handler.NewUserHandler(userService)
+	postHandler := handler.NewPostHandler(postService, userService)
 
-	srv := server.NewServer(config, database, userHandler, log)
+	srv := server.NewServer(config, database, userHandler, postHandler, tokenManager, log)
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"san/api/dto"
 	dbsqlc "san/internal/db/sqlc"
+	"san/internal/dto"
 	"san/internal/service"
 	"san/pkg/apperr"
 	"san/pkg/response"
@@ -101,6 +101,68 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 	}
 
 	response.Success(c, http.StatusOK, h.userToResponse(ctx, user))
+}
+
+// Login godoc
+// @Summary      Login user
+// @Description  Login user and return access and refresh tokens
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.LoginRequest true "Login Request"
+// @Success      200  {object}  dto.LoginResponse
+// @Failure      401  {object}  response.ErrorData
+// @Router       /auth/login [post]
+func (h *UserHandler) Login(c *gin.Context) {
+	var req dto.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.BadRequest(err.Error()))
+		return
+	}
+
+	result, err := h.service.Login(c.Request.Context(), service.LoginInput{
+		Email:    req.Email,
+		Password: req.Password,
+	})
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, dto.LoginResponse{
+		AccessToken:  result.AccessToken,
+		RefreshToken: result.RefreshToken,
+		User:         h.userToResponse(c.Request.Context(), result.User),
+	})
+}
+
+// RefreshToken godoc
+// @Summary      Refresh access token
+// @Description  Get a new access token using a refresh token
+// @Tags         auth
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.RefreshTokenRequest true "Refresh Token Request"
+// @Success      200  {object}  dto.TokenResponse
+// @Failure      401  {object}  response.ErrorData
+// @Router       /auth/refresh [post]
+func (h *UserHandler) RefreshToken(c *gin.Context) {
+	var req dto.RefreshTokenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.BadRequest(err.Error()))
+		return
+	}
+
+	accessToken, refreshToken, err := h.service.RefreshToken(c.Request.Context(), req.RefreshToken)
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, dto.TokenResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	})
 }
 
 // ListUsers godoc

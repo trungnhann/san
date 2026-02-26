@@ -17,4 +17,6 @@ type UserUseCase interface {
 	GetAvatarURL(ctx context.Context, userID string) (string, error)
 	UpdateUser(ctx context.Context, input service.UpdateUserInput) (*dbsqlc.User, error)
 	DeleteUser(ctx context.Context, id string) error
+	Login(ctx context.Context, input service.LoginInput) (*service.LoginResult, error)
+	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 }

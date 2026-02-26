@@ -9,6 +9,7 @@ import (
 	storage_service "san/internal/service/storage"
 	"san/pkg/apperr"
 	"san/pkg/logger"
+	"san/pkg/token"
 	"san/pkg/utils"
 
 	"github.com/google/uuid"
@@ -18,15 +19,96 @@ import (
 type UserService struct {
 	repo          UserRepository
 	activeStorage *storage_service.ActiveStorageService
+	tokenManager  token.TokenManager
 	log           logger.Logger
 }
 
-func NewUserService(repo UserRepository, activeStorage *storage_service.ActiveStorageService, log logger.Logger) *UserService {
+func NewUserService(repo UserRepository, activeStorage *storage_service.ActiveStorageService, tokenManager token.TokenManager, log logger.Logger) *UserService {
 	return &UserService{
 		repo:          repo,
 		activeStorage: activeStorage,
+		tokenManager:  tokenManager,
 		log:           log,
 	}
+}
+
+type LoginInput struct {
+	Email    string
+	Password string
+}
+
+type LoginResult struct {
+	User         *dbsqlc.User
+	AccessToken  string
+	RefreshToken string
+}
+
+func (s *UserService) Login(ctx context.Context, input LoginInput) (*LoginResult, error) {
+	user, err := s.repo.GetUserByEmail(ctx, input.Email)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, apperr.Unauthorized("Invalid email or password")
+		}
+		s.log.Errorf("UserService.Login: %v", err)
+		return nil, apperr.InternalServerError(err)
+	}
+
+	if err = utils.CheckPassword(input.Password, user.Password); err != nil {
+		return nil, apperr.Unauthorized("Invalid email or password")
+	}
+
+	accessToken, err := s.tokenManager.CreateAccessToken(user.ID)
+	if err != nil {
+		s.log.Errorf("UserService.Login: failed to create access token: %v", err)
+		return nil, apperr.InternalServerError(err)
+	}
+
+	refreshToken, err := s.tokenManager.CreateRefreshToken(user.ID)
+	if err != nil {
+		s.log.Errorf("UserService.Login: failed to create refresh token: %v", err)
+		return nil, apperr.InternalServerError(err)
+	}
+
+	return &LoginResult{
+		User:         user,
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+	}, nil
+}
+
+func (s *UserService) RefreshToken(ctx context.Context, refreshToken string) (string, string, error) {
+	claims, err := s.tokenManager.VerifyToken(refreshToken)
+	if err != nil {
+		return "", "", apperr.Unauthorized("Invalid refresh token")
+	}
+
+	if claims.TokenType != "refresh" {
+		return "", "", apperr.Unauthorized("Invalid token type")
+	}
+
+	// Verify user exists
+	_, err = s.repo.GetUserByID(ctx, claims.UserID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", apperr.Unauthorized("User not found")
+		}
+		s.log.Errorf("UserService.RefreshToken: %v", err)
+		return "", "", apperr.InternalServerError(err)
+	}
+
+	newAccessToken, err := s.tokenManager.CreateAccessToken(claims.UserID)
+	if err != nil {
+		s.log.Errorf("UserService.RefreshToken: failed to create access token: %v", err)
+		return "", "", apperr.InternalServerError(err)
+	}
+
+	newRefreshToken, err := s.tokenManager.CreateRefreshToken(claims.UserID)
+	if err != nil {
+		s.log.Errorf("UserService.RefreshToken: failed to create refresh token: %v", err)
+		return "", "", apperr.InternalServerError(err)
+	}
+
+	return newAccessToken, newRefreshToken, nil
 }
 
 type CreateUserInput struct {

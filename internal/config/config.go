@@ -27,6 +27,10 @@ type Config struct {
 	StorageBucket    string `mapstructure:"STORAGE_BUCKET_NAME"`
 	StorageRegion    string `mapstructure:"STORAGE_REGION"`
 	StorageUseSSL    bool   `mapstructure:"STORAGE_USE_SSL"`
+
+	JWTSecret             string `mapstructure:"JWT_SECRET"`
+	JWTExpirationHours    int    `mapstructure:"JWT_EXPIRATION_HOURS"`
+	RefreshExpirationDays int    `mapstructure:"REFRESH_EXPIRATION_DAYS"`
 }
 
 func LoadConfig(name string, path string) (config Config) {

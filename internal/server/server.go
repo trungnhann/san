@@ -9,8 +9,10 @@ import (
 	conf "san/internal/config"
 	"san/internal/db"
 	"san/internal/handler"
+	"san/internal/middleware"
 	"san/internal/router"
 	"san/pkg/logger"
+	"san/pkg/token"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -19,20 +21,25 @@ import (
 )
 
 type Server struct {
-	httpServer  *http.Server
-	db          *db.Database
-	log         logger.Logger
-	userHandler *handler.UserHandler
+	httpServer   *http.Server
+	db           *db.Database
+	log          logger.Logger
+	userHandler  *handler.UserHandler
+	postHandler  *handler.PostHandler
+	tokenManager token.TokenManager
 }
 
-func NewServer(cfg conf.Config, database *db.Database, userHandler *handler.UserHandler, log logger.Logger) *Server {
+func NewServer(cfg conf.Config, database *db.Database, userHandler *handler.UserHandler, postHandler *handler.PostHandler, tokenManager token.TokenManager, log logger.Logger) *Server {
 	r := gin.New()
 	r.Use(gin.Recovery())
+	r.Use(middleware.LoggerMiddleware(log))
 
 	s := &Server{
-		db:          database,
-		log:         log,
-		userHandler: userHandler,
+		db:           database,
+		log:          log,
+		userHandler:  userHandler,
+		postHandler:  postHandler,
+		tokenManager: tokenManager,
 	}
 
 	r.GET("/health", s.handleHealth)
@@ -43,7 +50,7 @@ func NewServer(cfg conf.Config, database *db.Database, userHandler *handler.User
 	// Swagger documentation endpoint
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
-	router.SetupRoutes(r, userHandler)
+	router.SetupRoutes(r, userHandler, postHandler, tokenManager)
 
 	s.httpServer = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),

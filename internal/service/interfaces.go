@@ -15,4 +15,5 @@ type UserRepository interface {
 	GetUserByID(ctx context.Context, id string) (*dbsqlc.User, error)
 	ListUsers(ctx context.Context, arg dbsqlc.ListUsersParams) ([]*dbsqlc.User, error)
 	UpdateUser(ctx context.Context, arg dbsqlc.UpdateUserParams) (*dbsqlc.User, error)
+	GetUserByEmail(ctx context.Context, email string) (*dbsqlc.User, error)
 }

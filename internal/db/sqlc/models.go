@@ -11,6 +11,24 @@ import (
 	"github.com/jackc/pgtype"
 )
 
+type Post struct {
+	ID          string     `json:"id"`
+	UserID      string     `json:"user_id"`
+	Title       string     `json:"title"`
+	Slug        string     `json:"slug"`
+	Abstract    *string    `json:"abstract"`
+	Body        string     `json:"body"`
+	Published   bool       `json:"published"`
+	PublishDate *time.Time `json:"publish_date"`
+	Location    *string    `json:"location"`
+	Lat         *float64   `json:"lat"`
+	Lon         *float64   `json:"lon"`
+	Locale      *string    `json:"locale"`
+	Tags        []string   `json:"tags"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
 type StorageAttachment struct {
 	ID         uuid.UUID `json:"id"`
 	Name       string    `json:"name"`
