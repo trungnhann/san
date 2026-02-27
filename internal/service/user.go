@@ -3,7 +3,9 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"time"
 
 	dbsqlc "san/internal/db/sqlc"
 	storage_service "san/internal/service/storage"
@@ -16,6 +18,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v4"
+	"github.com/redis/go-redis/v9"
 )
 
 type UserService struct {
@@ -24,15 +27,17 @@ type UserService struct {
 	tokenManager    token.TokenManager
 	taskDistributor worker.TaskDistributor
 	log             logger.Logger
+	redisClient     *redis.Client
 }
 
-func NewUserService(repo UserRepository, activeStorage *storage_service.ActiveStorageService, tokenManager token.TokenManager, taskDistributor worker.TaskDistributor, log logger.Logger) *UserService {
+func NewUserService(repo UserRepository, activeStorage *storage_service.ActiveStorageService, tokenManager token.TokenManager, taskDistributor worker.TaskDistributor, log logger.Logger, redisClient *redis.Client) *UserService {
 	return &UserService{
 		repo:            repo,
 		activeStorage:   activeStorage,
 		tokenManager:    tokenManager,
 		taskDistributor: taskDistributor,
 		log:             log,
+		redisClient:     redisClient,
 	}
 }
 
@@ -159,17 +164,27 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*d
 		}
 	}
 
-	// Send verification email
-	taskPayload := &worker.PayloadSendVerifyEmail{
-		Email: user.Email,
-	}
+	// Generate OTP
+	otp, err := utils.GenerateOTP(6)
+	if err != nil {
+		s.log.Errorf("failed to generate OTP: %v", err)
+	} else {
+		err = s.redisClient.Set(ctx, fmt.Sprintf("otp:%s", user.Email), otp, 15*time.Minute).Err()
+		if err != nil {
+			s.log.Errorf("failed to store OTP in Redis: %v", err)
+		}
 
-	opts := []asynq.Option{
-		asynq.MaxRetry(10),
-	}
+		taskPayload := &worker.PayloadSendVerifyEmail{
+			Email: user.Email,
+			OTP:   otp,
+		}
+		opts := []asynq.Option{
+			asynq.MaxRetry(10),
+		}
 
-	if err := s.taskDistributor.DistributeTaskSendVerifyEmail(ctx, taskPayload, opts...); err != nil {
-		s.log.Errorf("failed to enqueue verify email task: %v", err)
+		if err := s.taskDistributor.DistributeTaskSendVerifyEmail(ctx, taskPayload, opts...); err != nil {
+			s.log.Errorf("failed to enqueue verify email task: %v", err)
+		}
 	}
 
 	return user, nil
@@ -204,7 +219,58 @@ func (s *UserService) ListUsers(ctx context.Context, page, pageSize int32) ([]*d
 		s.log.Errorf("UserService.ListUsers: %v", err)
 		return nil, apperr.InternalServerError(err)
 	}
+
 	return users, nil
+}
+
+func (s *UserService) VerifyEmail(ctx context.Context, email string, otp string) error {
+	key := fmt.Sprintf("otp:%s", email)
+	storedOTP, err := s.redisClient.Get(ctx, key).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return apperr.BadRequest("Invalid or expired OTP")
+		}
+		s.log.Errorf("UserService.VerifyEmail: failed to get OTP from Redis: %v", err)
+		return apperr.InternalServerError(err)
+	}
+
+	if storedOTP != otp {
+		return apperr.BadRequest("Invalid OTP")
+	}
+
+	// Delete OTP after successful verification
+	s.redisClient.Del(ctx, key)
+
+	// Mark user as verified
+	err = s.repo.UpdateUserVerified(ctx, dbsqlc.UpdateUserVerifiedParams{
+		Email:      email,
+		IsVerified: true,
+	})
+	if err != nil {
+		s.log.Errorf("UserService.VerifyEmail: failed to update user verification status: %v", err)
+		return apperr.InternalServerError(err)
+	}
+
+	return nil
+}
+
+func (s *UserService) UploadUserAvatar(ctx context.Context, userID string, file io.Reader, size int64, contentType string, originalName string) (*dbsqlc.User, error) {
+	_, err := s.activeStorage.AttachFile(ctx, "users", userID, "avatar", file, size, contentType, originalName, true)
+	if err != nil {
+		s.log.Errorf("UserService.UploadUserAvatar: %v", err)
+		return nil, apperr.InternalServerError(err)
+	}
+
+	return s.GetUserByID(ctx, userID)
+}
+
+func (s *UserService) GetAvatarURL(ctx context.Context, userID string) (string, error) {
+	url, err := s.activeStorage.GetAttachmentURL(ctx, "users", userID, "avatar")
+	if err != nil {
+		s.log.Errorf("UserService.GetAvatarURL: %v", err)
+		return "", apperr.InternalServerError(err)
+	}
+	return url, nil
 }
 
 type UpdateUserInput struct {
@@ -215,31 +281,16 @@ type UpdateUserInput struct {
 }
 
 func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*dbsqlc.User, error) {
-	// Check if user exists
-	if _, err := s.repo.GetUserByID(ctx, input.ID); err != nil {
+	user, err := s.repo.UpdateUser(ctx, dbsqlc.UpdateUserParams{
+		ID:       input.ID,
+		Username: input.Username,
+		Email:    input.Email,
+		Bio:      input.Bio,
+	})
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, apperr.UserNotFound()
 		}
-		s.log.Errorf("UserService.UpdateUser: check user exists: %v", err)
-		return nil, apperr.InternalServerError(err)
-	}
-
-	arg := dbsqlc.UpdateUserParams{
-		ID: input.ID,
-	}
-
-	if input.Username != nil {
-		arg.Username = input.Username
-	}
-	if input.Email != nil {
-		arg.Email = input.Email
-	}
-	if input.Bio != nil {
-		arg.Bio = input.Bio
-	}
-
-	user, err := s.repo.UpdateUser(ctx, arg)
-	if err != nil {
 		s.log.Errorf("UserService.UpdateUser: %v", err)
 		return nil, apperr.InternalServerError(err)
 	}
@@ -247,49 +298,10 @@ func (s *UserService) UpdateUser(ctx context.Context, input UpdateUserInput) (*d
 }
 
 func (s *UserService) DeleteUser(ctx context.Context, id string) error {
-	if _, err := s.repo.GetUserByID(ctx, id); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return apperr.UserNotFound()
-		}
-		s.log.Errorf("UserService.DeleteUser: check user exists: %v", err)
-		return apperr.InternalServerError(err)
-	}
-
 	err := s.repo.DeleteUser(ctx, id)
 	if err != nil {
 		s.log.Errorf("UserService.DeleteUser: %v", err)
 		return apperr.InternalServerError(err)
 	}
 	return nil
-}
-
-func (s *UserService) GetAvatarURL(ctx context.Context, userID string) (string, error) {
-	url, err := s.activeStorage.GetAttachmentURL(ctx, "users", userID, "avatar")
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return "", nil
-		}
-		// Log debug only, as avatar might not exist
-		s.log.Debugf("UserService.GetAvatarURL: avatar not found for user %s: %v", userID, err)
-		return "", nil
-	}
-	return url, nil
-}
-
-func (s *UserService) UploadUserAvatar(ctx context.Context, userID string, file io.Reader, size int64, contentType string, originalName string) (*dbsqlc.User, error) {
-	_, err := s.activeStorage.AttachFile(ctx, "users", userID, "avatar", file, size, contentType, originalName, true)
-	if err != nil {
-		s.log.Errorf("UserService.UploadUserAvatar: failed to attach file: %v", err)
-		return nil, apperr.InternalServerError(err)
-	}
-
-	user, err := s.repo.GetUserByID(ctx, userID)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, apperr.UserNotFound()
-		}
-		return nil, apperr.InternalServerError(err)
-	}
-
-	return user, nil
 }

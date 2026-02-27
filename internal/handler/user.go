@@ -100,18 +100,73 @@ func (h *UserHandler) GetUserByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, http.StatusOK, h.userToResponse(ctx, user))
+	response.Success(c, http.StatusOK, h.userToResponse(c.Request.Context(), user))
+}
+
+// ListUsers godoc
+// @Summary      List users
+// @Description  Get a list of users with pagination
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        page      query     int     false  "Page number"
+// @Param        page_size query     int     false  "Page size"
+// @Success      200  {object}  response.Envelope{data=[]dto.UserResponse}
+// @Router       /users [get]
+func (h *UserHandler) ListUsers(c *gin.Context) {
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	ctx := c.Request.Context()
+
+	users, err := h.service.ListUsers(ctx, int32(page), int32(pageSize))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	var userResponses []dto.UserResponse
+	for _, user := range users {
+		userResponses = append(userResponses, h.userToResponse(c.Request.Context(), user))
+	}
+
+	response.Success(c, http.StatusOK, userResponses)
+}
+
+// VerifyEmail godoc
+// @Summary      Verify email with OTP
+// @Description  Verify user email address using OTP
+// @Tags         users
+// @Accept       json
+// @Produce      json
+// @Param        request body dto.VerifyEmailRequest true "Verification Request"
+// @Success      200  {object}  map[string]string
+// @Failure      400  {object}  map[string]string
+// @Router       /users/verify [post]
+func (h *UserHandler) VerifyEmail(c *gin.Context) {
+	var req dto.VerifyEmailRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, apperr.BadRequest(err.Error()))
+		return
+	}
+
+	if err := h.service.VerifyEmail(c.Request.Context(), req.Email, req.OTP); err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	response.Success(c, http.StatusOK, gin.H{"message": "Email verified successfully"})
 }
 
 // Login godoc
-// @Summary      Login user
-// @Description  Login user and return access and refresh tokens
+// @Summary      User login
+// @Description  Login with username/email and password
 // @Tags         auth
 // @Accept       json
 // @Produce      json
 // @Param        request body dto.LoginRequest true "Login Request"
 // @Success      200  {object}  dto.LoginResponse
-// @Failure      401  {object}  response.ErrorData
+// @Failure      400  {object}  map[string]string
+// @Failure      401  {object}  map[string]string
 // @Router       /auth/login [post]
 func (h *UserHandler) Login(c *gin.Context) {
 	var req dto.LoginRequest
@@ -144,7 +199,7 @@ func (h *UserHandler) Login(c *gin.Context) {
 // @Produce      json
 // @Param        request body dto.RefreshTokenRequest true "Refresh Token Request"
 // @Success      200  {object}  dto.TokenResponse
-// @Failure      401  {object}  response.ErrorData
+// @Failure      400  {object}  map[string]string
 // @Router       /auth/refresh [post]
 func (h *UserHandler) RefreshToken(c *gin.Context) {
 	var req dto.RefreshTokenRequest
@@ -165,167 +220,105 @@ func (h *UserHandler) RefreshToken(c *gin.Context) {
 	})
 }
 
-// ListUsers godoc
-// @Summary      List all users
-// @Description  Get a list of all users with pagination
-// @Tags         users
-// @Accept       json
-// @Produce      json
-// @Param        page      query     int     false  "Page number (default 1)"
-// @Param        page_size query     int     false  "Page size (default 10)"
-// @Success      200  {object}  response.Envelope{data=[]dto.UserResponse,meta=response.MetaData}
-// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
-// @Router       /users [get]
-func (h *UserHandler) ListUsers(c *gin.Context) {
-	ctx := c.Request.Context()
-
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-
-	users, err := h.service.ListUsers(ctx, int32(page), int32(pageSize))
-	if err != nil {
-		response.Error(c, err)
-		return
-	}
-
-	responses := make([]dto.UserResponse, 0, len(users))
-	for _, u := range users {
-		responses = append(responses, h.userToResponse(ctx, u))
-	}
-
-	meta := response.MetaData{
-		Page:     page,
-		PageSize: pageSize,
-		// TotalItems and TotalPages should be fetched from service if available
-	}
-
-	response.SuccessWithMeta(c, http.StatusOK, responses, meta)
-}
-
 // UpdateUser godoc
-// @Summary      Update a user
-// @Description  Update user details
+// @Summary      Update user
+// @Description  Update user profile
 // @Tags         users
 // @Accept       json
 // @Produce      json
-// @Param        id       path      string  true   "User ID"
-// @Param        username body      string  false  "Username"
-// @Param        email    body      string  false  "Email"
-// @Param        bio      body      string  false  "Bio"
-// @Success      200  {object}  response.Envelope{data=dto.UserResponse}
-// @Failure      400  {object}  response.Envelope{error=response.ErrorData}
-// @Failure      404  {object}  response.Envelope{error=response.ErrorData}
-// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
+// @Param        id      path     string                 true  "User ID"
+// @Param        request body     dto.UpdateUserRequest  true  "Update Request"
+// @Success      200  {object}  dto.UserResponse
+// @Failure      400  {object}  map[string]string
 // @Router       /users/{id} [put]
 func (h *UserHandler) UpdateUser(c *gin.Context) {
 	id := c.Param("id")
-	var req struct {
-		Username *string `json:"username"`
-		Email    *string `json:"email"`
-		Bio      *string `json:"bio"`
-	}
-
+	var req dto.UpdateUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.Error(c, apperr.BadRequest(err.Error()))
 		return
 	}
 
-	ctx := c.Request.Context()
 	input := service.UpdateUserInput{
 		ID:       id,
 		Username: req.Username,
-		Email:    req.Email,
 		Bio:      req.Bio,
+		Email:    req.Email,
 	}
 
-	user, err := h.service.UpdateUser(ctx, input)
+	user, err := h.service.UpdateUser(c.Request.Context(), input)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, h.userToResponse(ctx, user))
+	response.Success(c, http.StatusOK, h.userToResponse(c.Request.Context(), user))
 }
 
 // DeleteUser godoc
-// @Summary      Delete a user
+// @Summary      Delete user
 // @Description  Delete a user by ID
 // @Tags         users
 // @Accept       json
 // @Produce      json
 // @Param        id   path      string  true  "User ID"
-// @Success      200  {object}  response.Envelope
-// @Failure      404  {object}  response.Envelope{error=response.ErrorData}
-// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
+// @Success      200  {object}  map[string]string
+// @Failure      400  {object}  map[string]string
 // @Router       /users/{id} [delete]
 func (h *UserHandler) DeleteUser(c *gin.Context) {
 	id := c.Param("id")
-	ctx := c.Request.Context()
-
-	if err := h.service.DeleteUser(ctx, id); err != nil {
+	if err := h.service.DeleteUser(c.Request.Context(), id); err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, gin.H{"message": "user deleted successfully"})
+	response.Success(c, http.StatusOK, gin.H{"message": "User deleted successfully"})
 }
 
 // UploadAvatar godoc
 // @Summary      Upload user avatar
-// @Description  Upload an avatar image for a user
+// @Description  Upload a new avatar for the user
 // @Tags         users
-// @Accept       mpfd
+// @Accept       multipart/form-data
 // @Produce      json
 // @Param        id      path      string  true  "User ID"
 // @Param        avatar  formData  file    true  "Avatar Image"
-// @Success      200  {object}  response.Envelope{data=dto.UserResponse}
-// @Failure      400  {object}  response.Envelope{error=response.ErrorData}
-// @Failure      500  {object}  response.Envelope{error=response.ErrorData}
+// @Success      200  {object}  dto.UserResponse
+// @Failure      400  {object}  map[string]string
 // @Router       /users/{id}/avatar [post]
 func (h *UserHandler) UploadAvatar(c *gin.Context) {
-	userID := c.Param("id")
-	if userID == "" {
-		response.Error(c, apperr.BadRequest("user id is required"))
-		return
-	}
-
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 10<<20)
-
+	id := c.Param("id")
 	file, header, err := c.Request.FormFile("avatar")
 	if err != nil {
-		response.Error(c, apperr.BadRequest("failed to get file: "+err.Error()))
+		response.Error(c, apperr.BadRequest("Avatar file is required"))
 		return
 	}
 	defer file.Close()
 
-	ctx := c.Request.Context()
-	user, err := h.service.UploadUserAvatar(ctx, userID, file, header.Size, header.Header.Get("Content-Type"), header.Filename)
+	user, err := h.service.UploadUserAvatar(c.Request.Context(), id, file, header.Size, header.Header.Get("Content-Type"), header.Filename)
 	if err != nil {
 		response.Error(c, err)
 		return
 	}
 
-	response.Success(c, http.StatusOK, h.userToResponse(ctx, user))
+	response.Success(c, http.StatusOK, h.userToResponse(c.Request.Context(), user))
 }
 
-func (h *UserHandler) userToResponse(ctx context.Context, u *dbsqlc.User) dto.UserResponse {
-	avatarURL := ""
-	if url, err := h.service.GetAvatarURL(ctx, u.ID); err == nil {
-		avatarURL = url
-	}
+func (h *UserHandler) userToResponse(ctx context.Context, user *dbsqlc.User) dto.UserResponse {
+	avatarURL, _ := h.service.GetAvatarURL(ctx, user.ID)
 
-	imagePtr := &avatarURL
-	if avatarURL == "" {
-		imagePtr = nil
+	var image *string
+	if avatarURL != "" {
+		image = &avatarURL
 	}
 
 	return dto.UserResponse{
-		ID:        u.ID,
-		Username:  u.Username,
-		Email:     u.Email,
-		Bio:       u.Bio,
-		Image:     imagePtr,
-		CreatedAt: u.CreatedAt,
-		UpdatedAt: u.UpdatedAt,
+		ID:         user.ID,
+		Username:   user.Username,
+		Email:      user.Email,
+		Bio:        user.Bio,
+		Image:      image,
+		CreatedAt:  user.CreatedAt,
+		UpdatedAt:  user.UpdatedAt,
 	}
 }

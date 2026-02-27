@@ -32,3 +32,8 @@ SET
     updated_at = NOW()
 WHERE id = sqlc.arg('id')
 RETURNING *;
+
+-- name: UpdateUserVerified :exec
+UPDATE users
+SET is_verified = $2, updated_at = NOW()
+WHERE email = $1;

@@ -12,7 +12,7 @@ import (
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, username, email, password, bio)
 VALUES ($1, $2, $3, $4, $5)
-RETURNING id, username, email, password, bio, created_at, updated_at
+RETURNING id, username, email, password, bio, created_at, updated_at, is_verified
 `
 
 type CreateUserParams struct {
@@ -40,6 +40,7 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (*User, 
 		&i.Bio,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsVerified,
 	)
 	return &i, err
 }
@@ -55,7 +56,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id string) error {
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, username, email, password, bio, created_at, updated_at
+SELECT id, username, email, password, bio, created_at, updated_at, is_verified
 FROM users
 WHERE email = $1
 `
@@ -71,12 +72,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (*User, erro
 		&i.Bio,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsVerified,
 	)
 	return &i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, username, email, password, bio, created_at, updated_at
+SELECT id, username, email, password, bio, created_at, updated_at, is_verified
 FROM users
 WHERE id = $1
 `
@@ -92,12 +94,13 @@ func (q *Queries) GetUserByID(ctx context.Context, id string) (*User, error) {
 		&i.Bio,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsVerified,
 	)
 	return &i, err
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, username, email, password, bio, created_at, updated_at
+SELECT id, username, email, password, bio, created_at, updated_at, is_verified
 FROM users
 ORDER BY created_at DESC
 LIMIT $1 OFFSET $2
@@ -125,6 +128,7 @@ func (q *Queries) ListUsers(ctx context.Context, arg ListUsersParams) ([]*User, 
 			&i.Bio,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.IsVerified,
 		); err != nil {
 			return nil, err
 		}
@@ -144,7 +148,7 @@ SET
     bio = COALESCE($3, bio),
     updated_at = NOW()
 WHERE id = $4
-RETURNING id, username, email, password, bio, created_at, updated_at
+RETURNING id, username, email, password, bio, created_at, updated_at, is_verified
 `
 
 type UpdateUserParams struct {
@@ -170,6 +174,23 @@ func (q *Queries) UpdateUser(ctx context.Context, arg UpdateUserParams) (*User, 
 		&i.Bio,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.IsVerified,
 	)
 	return &i, err
+}
+
+const updateUserVerified = `-- name: UpdateUserVerified :exec
+UPDATE users
+SET is_verified = $2, updated_at = NOW()
+WHERE email = $1
+`
+
+type UpdateUserVerifiedParams struct {
+	Email      string `json:"email"`
+	IsVerified bool   `json:"is_verified"`
+}
+
+func (q *Queries) UpdateUserVerified(ctx context.Context, arg UpdateUserVerifiedParams) error {
+	_, err := q.db.Exec(ctx, updateUserVerified, arg.Email, arg.IsVerified)
+	return err
 }

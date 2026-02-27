@@ -7,11 +7,6 @@ import (
 	"github.com/jordan-wright/email"
 )
 
-const (
-	smtpAuthAddress   = "smtp.gmail.com"
-	smtpServerAddress = "smtp.gmail.com:587"
-)
-
 type EmailSender interface {
 	SendEmail(subject string, content string, to []string, cc []string, bcc []string, attachFiles []string) error
 }
@@ -26,14 +21,12 @@ type SmtpSender struct {
 }
 
 func NewSmtpSender(name string, fromEmailAddress string, fromEmailPassword string, host string, port int, username string) EmailSender {
-	// Default to Gmail if not specified
 	if host == "" {
 		host = "smtp.gmail.com"
 	}
 	if port == 0 {
 		port = 587
 	}
-	// Default username to fromEmailAddress if not specified (for Gmail)
 	if username == "" {
 		username = fromEmailAddress
 	}

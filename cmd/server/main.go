@@ -20,6 +20,7 @@ import (
 	"san/pkg/token"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -75,7 +76,12 @@ func main() {
 		log.Fatalf("failed to create task distributor: %v", err)
 	}
 
-	userService := service.NewUserService(database.Queries, activeStorageService, tokenManager, taskDistributor, log)
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: config.RedisAddress,
+	})
+	defer redisClient.Close()
+
+	userService := service.NewUserService(database.Queries, activeStorageService, tokenManager, taskDistributor, log, redisClient)
 	postService := service.NewPostService(database.Queries, activeStorageService, log)
 
 	userHandler := handler.NewUserHandler(userService)

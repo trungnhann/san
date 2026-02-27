@@ -126,6 +126,33 @@
 					"response": []
 				},
 				{
+					"name": "Verify Email",
+					"request": {
+						"method": "POST",
+						"header": [],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"test@example.com\",\n    \"otp\": \"123456\"\n}",
+							"options": {
+								"raw": {
+									"language": "json"
+								}
+							}
+						},
+						"url": {
+							"raw": "{{base_url}}/users/verify",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"users",
+								"verify"
+							]
+						}
+					},
+					"response": []
+				},
+				{
 					"name": "List Users (Paginated)",
 					"request": {
 						"method": "GET",

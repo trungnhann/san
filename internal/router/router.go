@@ -18,6 +18,7 @@ func SetupRoutes(r *gin.Engine, userHandler *handler.UserHandler, postHandler *h
 
 		users := v1.Group("/users")
 		users.POST("", userHandler.CreateUser)
+		users.POST("/verify", userHandler.VerifyEmail)
 		users.GET("", userHandler.ListUsers)
 		users.GET("/:id", userHandler.GetUserByID)
 

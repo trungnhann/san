@@ -18,6 +18,7 @@ const (
 // Define payloads
 type PayloadSendVerifyEmail struct {
 	Email string `json:"email"`
+	OTP   string `json:"otp"`
 }
 
 // Example of a generic interface if you want to support any payload,

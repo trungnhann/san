@@ -112,11 +112,8 @@ func (processor *RabbitMQTaskProcessor) ProcessTaskSendVerifyEmail(ctx context.C
 		return fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
 
-	subject := "Welcome to San App"
-	content := fmt.Sprintf(`
-	<h1>Welcome!</h1>
-	<p>Please verify your email: %s</p>
-	`, payload.Email)
+	subject := "Verify Your Account - San API"
+	content := generateOTPEmailContent(payload.OTP)
 	to := []string{payload.Email}
 
 	err := processor.mailer.SendEmail(subject, content, to, nil, nil, nil)

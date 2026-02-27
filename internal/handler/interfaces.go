@@ -19,4 +19,5 @@ type UserUseCase interface {
 	DeleteUser(ctx context.Context, id string) error
 	Login(ctx context.Context, input service.LoginInput) (*service.LoginResult, error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+	VerifyEmail(ctx context.Context, email string, otp string) error
 }
