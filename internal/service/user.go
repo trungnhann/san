@@ -7,28 +7,32 @@ import (
 
 	dbsqlc "san/internal/db/sqlc"
 	storage_service "san/internal/service/storage"
+	"san/internal/worker"
 	"san/pkg/apperr"
 	"san/pkg/logger"
 	"san/pkg/token"
 	"san/pkg/utils"
 
 	"github.com/google/uuid"
+	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v4"
 )
 
 type UserService struct {
-	repo          UserRepository
-	activeStorage *storage_service.ActiveStorageService
-	tokenManager  token.TokenManager
-	log           logger.Logger
+	repo            UserRepository
+	activeStorage   *storage_service.ActiveStorageService
+	tokenManager    token.TokenManager
+	taskDistributor worker.TaskDistributor
+	log             logger.Logger
 }
 
-func NewUserService(repo UserRepository, activeStorage *storage_service.ActiveStorageService, tokenManager token.TokenManager, log logger.Logger) *UserService {
+func NewUserService(repo UserRepository, activeStorage *storage_service.ActiveStorageService, tokenManager token.TokenManager, taskDistributor worker.TaskDistributor, log logger.Logger) *UserService {
 	return &UserService{
-		repo:          repo,
-		activeStorage: activeStorage,
-		tokenManager:  tokenManager,
-		log:           log,
+		repo:            repo,
+		activeStorage:   activeStorage,
+		tokenManager:    tokenManager,
+		taskDistributor: taskDistributor,
+		log:             log,
 	}
 }
 
@@ -153,6 +157,19 @@ func (s *UserService) CreateUser(ctx context.Context, input CreateUserInput) (*d
 
 			return nil, apperr.New(apperr.ErrCodeUploadFailed, "Failed to upload avatar", 500).WithCause(err)
 		}
+	}
+
+	// Send verification email
+	taskPayload := &worker.PayloadSendVerifyEmail{
+		Email: user.Email,
+	}
+
+	opts := []asynq.Option{
+		asynq.MaxRetry(10),
+	}
+
+	if err := s.taskDistributor.DistributeTaskSendVerifyEmail(ctx, taskPayload, opts...); err != nil {
+		s.log.Errorf("failed to enqueue verify email task: %v", err)
 	}
 
 	return user, nil

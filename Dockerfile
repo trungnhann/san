@@ -11,6 +11,7 @@ RUN go mod download
 COPY . .
 # Build the binary
 RUN CGO_ENABLED=0 GOOS=linux go build -o main ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o worker ./cmd/worker
 
 # Final Stage
 FROM alpine:3.19
@@ -21,6 +22,7 @@ RUN apk add --no-cache ca-certificates
 
 # Copy binary from builder
 COPY --from=builder /app/main .
+COPY --from=builder /app/worker .
 
 # Copy configuration files
 COPY --from=builder /app/env ./env

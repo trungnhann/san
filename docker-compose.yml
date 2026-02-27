@@ -21,8 +21,35 @@ services:
       - STORAGE_BUCKET_NAME=san-bucket
       - STORAGE_USE_SSL=false
       - STORAGE_REGION=us-east-1
+      - RABBITMQ_SOURCE=amqp://guest:guest@san-rabbitmq:5672/
     depends_on:
-      - postgres
+      postgres:
+        condition: service_started
+      redis:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - san-network
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /app/worker
+    container_name: san-worker
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - RABBITMQ_SOURCE=amqp://guest:guest@san-rabbitmq:5672/
+      - EMAIL_SENDER_NAME=${EMAIL_SENDER_NAME}
+      - EMAIL_SENDER_ADDRESS=${EMAIL_SENDER_ADDRESS}
+      - EMAIL_SENDER_PASSWORD=${EMAIL_SENDER_PASSWORD}
+      - EMAIL_SENDER_HOST=${EMAIL_SENDER_HOST}
+      - EMAIL_SENDER_PORT=${EMAIL_SENDER_PORT}
+      - EMAIL_SENDER_USERNAME=${EMAIL_SENDER_USERNAME}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
     networks:
       - san-network
 
@@ -52,8 +79,34 @@ services:
     networks:
       - san-network
 
-  # prometheus:
-  #   image: prom/prometheus:latest
+  redis:
+    image: redis:7-alpine
+    container_name: san-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - san-network
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: san-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - san-network
+    healthcheck:
+      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # prometheus: #   image: prom/prometheus:latest
+
   #   container_name: san-prometheus
   #   volumes:
   #     - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
@@ -106,3 +159,5 @@ networks:
 volumes:
   postgres_data:
   minio_data:
+  redis_data:
+  rabbitmq_data:

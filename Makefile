@@ -19,5 +19,22 @@ sqlc:
 dev:
 	air
 
+# Docker commands
+up:
+	docker compose up -d --build
+
+down:
+	docker compose down
+
+restart:
+	docker compose restart app worker
+
+# Rebuild and restart app & worker when code changes
+update:
+	docker compose up -d --build app worker
+
+logs:
+	docker compose logs -f
+
 swagger:
 	swag init -g cmd/server/main.go

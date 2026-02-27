@@ -31,6 +31,16 @@ type Config struct {
 	JWTSecret             string `mapstructure:"JWT_SECRET"`
 	JWTExpirationHours    int    `mapstructure:"JWT_EXPIRATION_HOURS"`
 	RefreshExpirationDays int    `mapstructure:"REFRESH_EXPIRATION_DAYS"`
+
+	EmailSenderName     string `mapstructure:"EMAIL_SENDER_NAME"`
+	EmailSenderAddress  string `mapstructure:"EMAIL_SENDER_ADDRESS"`
+	EmailSenderPassword string `mapstructure:"EMAIL_SENDER_PASSWORD"`
+	EmailSenderHost     string `mapstructure:"EMAIL_SENDER_HOST"`
+	EmailSenderPort     int    `mapstructure:"EMAIL_SENDER_PORT"`
+	EmailSenderUsername string `mapstructure:"EMAIL_SENDER_USERNAME"`
+
+	RabbitMQSource string `mapstructure:"RABBITMQ_SOURCE"`
+	RedisAddress   string `mapstructure:"REDIS_ADDRESS"`
 }
 
 func LoadConfig(name string, path string) (config Config) {

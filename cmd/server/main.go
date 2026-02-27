@@ -15,9 +15,11 @@ import (
 	"san/internal/service"
 	storage_service "san/internal/service/storage"
 	"san/internal/storage"
+	"san/internal/worker"
 	"san/pkg/logger"
 	"san/pkg/token"
 
+	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -62,7 +64,18 @@ func main() {
 
 	tokenManager := token.NewJWTManager(config.JWTSecret, config.JWTExpirationHours, config.RefreshExpirationDays)
 
-	userService := service.NewUserService(database.Queries, activeStorageService, tokenManager, log)
+	amqpConn, err := amqp.Dial(config.RabbitMQSource)
+	if err != nil {
+		log.Fatalf("failed to connect to RabbitMQ: %v", err)
+	}
+	defer amqpConn.Close()
+
+	taskDistributor, err := worker.NewRabbitMQTaskDistributor(amqpConn)
+	if err != nil {
+		log.Fatalf("failed to create task distributor: %v", err)
+	}
+
+	userService := service.NewUserService(database.Queries, activeStorageService, tokenManager, taskDistributor, log)
 	postService := service.NewPostService(database.Queries, activeStorageService, log)
 
 	userHandler := handler.NewUserHandler(userService)
