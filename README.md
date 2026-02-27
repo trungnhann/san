@@ -178,6 +178,23 @@ We define interfaces where they are **used** (Consumer), not where they are impl
 Instead of a heavy ORM like GORM, we use **SQLC**. You write raw SQL, and it generates type-safe Go code. This gives you the performance of raw SQL with the safety of a compiled language.
 
 ### 3. Background Processing (RabbitMQ)
-Long-running tasks (like sending emails) are offloaded to **RabbitMQ**.
-- **Distributor**: The API server pushes tasks to the queue.
-- **Processor**: The Worker service consumes tasks from the queue and executes them reliably.
+We use **RabbitMQ** to handle long-running tasks asynchronously, such as sending emails, ensuring the API server remains fast and responsive.
+
+**Architecture:**
+
+1.  **Producer (API Server)**:
+    - When a user signs up, the `UserService` generates an OTP and creates a task payload.
+    - The **Distributor** (`internal/worker/rabbitmq_distributor.go`) serializes this payload to JSON and publishes it to a specific RabbitMQ queue (e.g., `task:send_verify_email`).
+    - Messages are marked as **persistent** to survive broker restarts.
+
+2.  **Consumer (Worker Service)**:
+    - A separate **Worker** process (running `cmd/worker/main.go`) connects to RabbitMQ.
+    - The **Processor** (`internal/worker/rabbitmq_processor.go`) listens to the queues.
+    - It uses **QoS (Quality of Service)** with a prefetch count of 1 to ensure fair load balancing (it processes one task at a time).
+    - If the task succeeds (email sent), it sends an **ACK** (Acknowledgement) to RabbitMQ to remove the message.
+    - If it fails, it sends a **NACK** (Negative Acknowledgement) to requeue the message for a retry.
+
+**Key Components:**
+- **Distributor**: Interface for enqueuing tasks. Decouples the service logic from the message broker implementation.
+- **Processor**: Registers consumers for different queues and routes messages to specific handler functions.
+- **Payloads**: Strongly typed structs (e.g., `PayloadSendVerifyEmail`) ensure type safety for task data.
