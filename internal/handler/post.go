@@ -85,10 +85,6 @@ func (h *PostHandler) postToResponse(ctx context.Context, post *dbsqlc.Post) dto
 // @Router       /users/{id}/posts [get]
 func (h *PostHandler) ListPostsByUserID(c *gin.Context) {
 	userID := c.Param("id")
-	if userID == "me" {
-		userID = c.MustGet("userID").(string)
-	}
-
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
 
