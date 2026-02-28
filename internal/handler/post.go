@@ -72,6 +72,40 @@ func (h *PostHandler) postToResponse(ctx context.Context, post *dbsqlc.Post) dto
 	}
 }
 
+// ListPostsByUserID godoc
+// @Summary      List posts by user ID
+// @Description  Get a list of posts for a specific user
+// @Tags         posts
+// @Accept       json
+// @Produce      json
+// @Param        id        path      string  true   "User ID"
+// @Param        page      query     int     false  "Page number"
+// @Param        page_size query     int     false  "Page size"
+// @Success      200  {object}  response.Envelope{data=[]dto.PostResponse}
+// @Router       /users/{id}/posts [get]
+func (h *PostHandler) ListPostsByUserID(c *gin.Context) {
+	userID := c.Param("id")
+	if userID == "me" {
+		userID = c.MustGet("userID").(string)
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+
+	posts, err := h.postService.ListPostsByUserID(c.Request.Context(), userID, int32(page), int32(pageSize))
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+
+	var postResponses []dto.PostResponse
+	for _, post := range posts {
+		postResponses = append(postResponses, h.postToResponse(c.Request.Context(), post))
+	}
+
+	response.Success(c, http.StatusOK, postResponses)
+}
+
 func (h *PostHandler) CreatePost(c *gin.Context) {
 	var req dto.CreatePostRequest
 	// Support both JSON and FormData?

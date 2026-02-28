@@ -13,29 +13,29 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
-	"github.com/jackc/pgx/v4"
+	"github.com/jackc/pgx/v4/pgxpool"
 )
 
 type Database struct {
-	Conn    *pgx.Conn
+	Pool    *pgxpool.Pool
 	Config  conf.Config
 	Queries *db.Queries
 }
 
 func NewDatabase(cfg conf.Config) *Database {
 	cfg.DBUrl = buildDBURL(cfg)
-	conn := Connect(cfg)
+	pool := Connect(cfg)
 
 	return &Database{
-		Conn:    conn,
+		Pool:    pool,
 		Config:  cfg,
-		Queries: db.New(conn),
+		Queries: db.New(pool),
 	}
 }
 
 func (d *Database) Close() {
-	if d.Conn != nil {
-		Close(d.Conn)
+	if d.Pool != nil {
+		d.Pool.Close()
 	}
 }
 
@@ -44,14 +44,14 @@ func (d *Database) Migrate() {
 }
 
 func (d *Database) HealthCheck(ctx context.Context) error {
-	if d.Conn == nil {
-		return fmt.Errorf("database connection is nil")
+	if d.Pool == nil {
+		return fmt.Errorf("database connection pool is nil")
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 
-	return d.Conn.Ping(ctx)
+	return d.Pool.Ping(ctx)
 }
 
 func buildDBURL(cfg conf.Config) string {
@@ -65,19 +65,27 @@ func buildDBURL(cfg conf.Config) string {
 	)
 }
 
-func Connect(config conf.Config) *pgx.Conn {
-	conn, err := pgx.Connect(context.Background(), config.DBUrl)
+func Connect(config conf.Config) *pgxpool.Pool {
+	config.DBUrl = buildDBURL(config)
+	poolConfig, err := pgxpool.ParseConfig(config.DBUrl)
+	if err != nil {
+		log.Fatalf("Unable to parse database config: %v\n", err)
+	}
+
+	poolConfig.MaxConns = 25
+	poolConfig.MinConns = 5
+	poolConfig.MaxConnLifetime = 1 * time.Hour
+	poolConfig.MaxConnIdleTime = 30 * time.Minute
+
+	pool, err := pgxpool.ConnectConfig(context.Background(), poolConfig)
 	if err != nil {
 		log.Fatalf("Unable to connect to database: %v\n", err)
 	}
-	return conn
+	return pool
 }
 
-func Close(conn *pgx.Conn) {
-	err := conn.Close(context.Background())
-	if err != nil {
-		log.Fatalf("Unable to close connection: %v\n", err)
-	}
+func Close(pool *pgxpool.Pool) {
+	pool.Close()
 }
 
 func AutoMigrate(config conf.Config) {
@@ -85,7 +93,7 @@ func AutoMigrate(config conf.Config) {
 	if !strings.HasPrefix(path, "file://") {
 		path = fmt.Sprintf("file://%s", path)
 	}
-	
+
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
 		config.DBUsername,
 		config.DBPassword,

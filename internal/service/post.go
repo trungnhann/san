@@ -88,6 +88,27 @@ func (s *PostService) CreatePost(ctx context.Context, input CreatePostInput) (*d
 	return post, nil
 }
 
+func (s *PostService) ListPostsByUserID(ctx context.Context, userID string, page, pageSize int32) ([]*dbsqlc.Post, error) {
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 {
+		pageSize = 10
+	}
+	offset := (page - 1) * pageSize
+
+	posts, err := s.repo.ListPostsByUserID(ctx, dbsqlc.ListPostsByUserIDParams{
+		UserID: userID,
+		Limit:  pageSize,
+		Offset: offset,
+	})
+	if err != nil {
+		s.log.Errorf("PostService.ListPostsByUserID: %v", err)
+		return nil, apperr.InternalServerError(err)
+	}
+	return posts, nil
+}
+
 func (s *PostService) GetPostByID(ctx context.Context, id string) (*dbsqlc.Post, error) {
 	post, err := s.repo.GetPostByID(ctx, id)
 	if err != nil {

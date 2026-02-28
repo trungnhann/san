@@ -40,6 +40,7 @@ func SetupRoutes(r *gin.Engine, userHandler *handler.UserHandler, postHandler *h
 			protectedUsers.PUT("/:id", userHandler.UpdateUser)
 			protectedUsers.DELETE("/:id", userHandler.DeleteUser)
 			protectedUsers.POST("/:id/avatar", userHandler.UploadAvatar)
+			protectedUsers.GET("/:id/posts", postHandler.ListPostsByUserID)
 
 			protectedPosts := protected.Group("/posts")
 			protectedPosts.POST("", postHandler.CreatePost)
