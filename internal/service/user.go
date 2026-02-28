@@ -267,6 +267,9 @@ func (s *UserService) UploadUserAvatar(ctx context.Context, userID string, file 
 func (s *UserService) GetAvatarURL(ctx context.Context, userID string) (string, error) {
 	url, err := s.activeStorage.GetAttachmentURL(ctx, "users", userID, "avatar")
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
 		s.log.Errorf("UserService.GetAvatarURL: %v", err)
 		return "", apperr.InternalServerError(err)
 	}

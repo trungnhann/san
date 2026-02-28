@@ -5,10 +5,16 @@ import (
 	"san/internal/middleware"
 	"san/pkg/token"
 
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
 
 func SetupRoutes(r *gin.Engine, userHandler *handler.UserHandler, postHandler *handler.PostHandler, tokenManager token.TokenManager) {
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true
+	config.AddAllowHeaders("Authorization")
+	r.Use(cors.New(config))
+
 	v1 := r.Group("/api/v1")
 	{
 		// Public routes

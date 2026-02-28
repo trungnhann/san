@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	conf "san/internal/config"
@@ -80,7 +81,11 @@ func Close(conn *pgx.Conn) {
 }
 
 func AutoMigrate(config conf.Config) {
-	path := fmt.Sprintf("file://%s", config.MigrationPath)
+	path := config.MigrationPath
+	if !strings.HasPrefix(path, "file://") {
+		path = fmt.Sprintf("file://%s", path)
+	}
+	
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:%d/%s?sslmode=disable",
 		config.DBUsername,
 		config.DBPassword,
